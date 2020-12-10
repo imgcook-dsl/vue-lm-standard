@@ -116,14 +116,14 @@ module.exports = function(schema, option) {
           value = parseInt(value).toFixed(2);
           value = value == 0 ? value : value + 'px';
         }
-        styleData.push(`${_.kebabCase(key)}: ${value}`);
+        styleData.push(`${_.kebabCase(key)}: ${value};`);
       } else if (noUnitStyles.indexOf(key) != -1) {
-        styleData.push(`${_.kebabCase(key)}: ${parseFloat(value)}`);
+        styleData.push(`${_.kebabCase(key)}: ${parseFloat(value)};`);
       } else {
-        styleData.push(`${_.kebabCase(key)}: ${value}`);
+        styleData.push(`${_.kebabCase(key)}: ${value};`);
       }
     }
-    return styleData.join(';');
+    return styleData.join('');
   };
 
   // parse function, return params and content
@@ -285,7 +285,6 @@ module.exports = function(schema, option) {
       styles.push(`
         .${className} {
           ${parseStyle(schema.props.style)}
-        }
       `);
       styles4vw.push(`
         .${className} {
@@ -346,6 +345,11 @@ module.exports = function(schema, option) {
       xml = parseCondition(schema.condition, xml);
       // console.log(xml);
     }
+
+    if (className) {
+      styles.push(`}`);
+    }
+
     return xml || '';
   };
 
@@ -439,7 +443,7 @@ module.exports = function(schema, option) {
         panelValue: prettier.format(
           `
           <template>
-              ${template}
+              ${template.join('\n\n')}
           </template>
           <script>
             ${imports.join('\n')}
@@ -462,9 +466,9 @@ module.exports = function(schema, option) {
         panelType: 'vue'
       },
       {
-        panelName: 'index.css',
-        panelValue: prettier.format(`${styles.join('\n')}`, { parser: 'css' }),
-        panelType: 'css'
+        panelName: 'index.scss',
+        panelValue: prettier.format(styles.join('\n'), { parser: 'scss' }),
+        panelType: 'scss'
       },
       {
         panelName: 'index.response.css',
