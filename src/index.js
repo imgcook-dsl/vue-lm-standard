@@ -5,7 +5,6 @@ module.exports = function(schema, option) {
 
   const imports = [];
 
-  // Global Public Functions
   const utils = [];
 
   const datas = [];
@@ -19,8 +18,6 @@ module.exports = function(schema, option) {
   const lifeCycles = [];
 
   const styles = [];
-
-  const styles4vw = [];
 
   const styles4rem = [];
 
@@ -286,11 +283,6 @@ module.exports = function(schema, option) {
         .${className} {
           ${parseStyle(schema.props.style)}
       `);
-      styles4vw.push(`
-        .${className} {
-          ${parseStyle(schema.props.style, { toVW: true })}
-        }
-      `);
       styles4rem.push(`
         .${className} {
           ${parseStyle(schema.props.style, { toREM: true })}
@@ -445,8 +437,10 @@ module.exports = function(schema, option) {
           <template>
               ${template.join('\n\n')}
           </template>
+
           <script>
             ${imports.join('\n')}
+
             export default {
               data() {
                 return {
@@ -459,21 +453,14 @@ module.exports = function(schema, option) {
               ${lifeCycles.join(',\n')}
             }
           </script>
-          <style src="./index.response.css" />
+
+          <style lang="scss" scoped>
+            ${prettier.format(styles.join('\n'), { parser: 'scss' })}
+          </style>
         `,
           prettierOpt
         ),
         panelType: 'vue'
-      },
-      {
-        panelName: 'index.scss',
-        panelValue: prettier.format(styles.join('\n'), { parser: 'scss' }),
-        panelType: 'scss'
-      },
-      {
-        panelName: 'index.response.css',
-        panelValue: prettier.format(styles4vw.join('\n'), { parser: 'css' }),
-        panelType: 'css'
       },
       {
         panelName: 'index.rem.css',
