@@ -110,8 +110,16 @@ module.exports = function(schema, option) {
           value = parseFloat((fontSize / htmlFontsize).toFixed(2));
           value =  value ? `${value}rem` : value;
         } else {
-          value = parseInt(value).toFixed(2);
-          value = value == 0 ? value : value + 'px';
+          if (typeof value === 'string') {
+            const number = parseInt(value);
+            const unit = value.replace(number, '');
+            if (unit === 'px') {
+              value = Math.floor((number / 2)).toFixed(2);
+            } else {
+              value = number.toFixed(2);
+            }
+            value = value + unit;
+          }
         }
         styleData.push(`${_.kebabCase(key)}: ${value};`);
       } else if (noUnitStyles.indexOf(key) != -1) {
