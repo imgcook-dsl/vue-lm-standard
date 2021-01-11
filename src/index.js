@@ -1,4 +1,4 @@
-module.exports = function(schema, option) {
+module.exports = function(rootSchema, option) {
   const { _, prettier } = option;
 
   const template = [];
@@ -9,11 +9,9 @@ module.exports = function(schema, option) {
 
   const datas = [];
 
-  const constants = {};
+  const components = [];
 
   const methods = [];
-
-  const expressionName = [];
 
   const lifeCycles = [];
 
@@ -47,15 +45,6 @@ module.exports = function(schema, option) {
   ];
 
   const noUnitStyles = [ 'opacity', 'fontWeight' ];
-
-  const lifeCycleMap = {
-    _constructor: 'created',
-    getDerivedStateFromProps: 'beforeUpdate',
-    render: '',
-    componentDidMount: 'mounted',
-    componentDidUpdate: 'updated',
-    componentWillUnmount: 'beforeDestroy'
-  };
 
   const width = option.responsive.width || 750;
   const viewportWidth = option.responsive.viewportWidth || 375;
@@ -119,6 +108,8 @@ module.exports = function(schema, option) {
               value = number.toFixed(2);
             }
             value = value + unit;
+          } else if (typeof value === 'number') {
+            value = Math.floor((value / 2)).toFixed(2) + 'px';
           }
         }
         styleData.push(`${_.kebabCase(key)}: ${value};`);
@@ -145,32 +136,24 @@ module.exports = function(schema, option) {
   };
 
   // parse layer props(static values or expression)
-  const parseProps = (value, isReactNode, constantName) => {
+  const parseProps = (value, isReactNode) => {
     if (typeof value === 'string') {
       if (isExpression(value)) {
-        if (isReactNode) {
-          return `{{${value.slice(7, -2)}}}`;
-        } else {
-          return value.slice(2, -2);
-        }
+        return `{{${value.slice(2, -2).replace('this.', '')}}}`;
       }
-
       if (isReactNode) {
         return value;
-      } else if (constantName) {
-        // save to constant
-        expressionName[constantName] = expressionName[constantName] ? expressionName[constantName] + 1 : 1;
-        const name = `${constantName}${expressionName[constantName]}`;
-        constants[name] = value;
-        return `"constants.${name}"`;
+      } else if (value.indexOf('$') === 0) {
+        const data = value.slice(1, value.length)
+        datas.push(`${data}: ''`);
+        return `"${data}"`;
       } else {
         return `"${value}"`;
       }
     } else if (typeof value === 'function') {
       const { params, content, name } = parseFunction(value);
-      expressionName[name] = expressionName[name] ? expressionName[name] + 1 : 1;
-      methods.push(`${name}_${expressionName[name]}(${params}) {${content}}`);
-      return `${name}_${expressionName[name]}`;
+      methods.push(`${name}(${params}) {${content}}`);
+      return name;
     } else {
       return `"${value}"`;
     }
@@ -179,9 +162,10 @@ module.exports = function(schema, option) {
   const parsePropsKey = (key, value) => {
     if (typeof value === 'function') {
       return `@${transformEventName(key)}`;
-    } else {
+    } else if (value.indexOf('$') === 0) {
       return `:${key}`;
     }
+    return `${key}`;
   };
 
   // parse async dataSource
@@ -193,53 +177,59 @@ module.exports = function(schema, option) {
 
     switch (action) {
       case 'fetch':
-        if (imports.indexOf(`import {fetch} from whatwg-fetch`) === -1) {
-          imports.push(`import {fetch} from 'whatwg-fetch'`);
-        }
-        payload = {
-          method: method
-        };
+        // if (imports.indexOf(`import {fetch} from whatwg-fetch`) === -1) {
+        //   imports.push(`import {fetch} from 'whatwg-fetch'`);
+        // }
 
-        break;
-      case 'jsonp':
-        if (imports.indexOf(`import {fetchJsonp} from fetch-jsonp`) === -1) {
-          imports.push(`import jsonp from 'fetch-jsonp'`);
-        }
         break;
     }
 
-    Object.keys(data.options).forEach((key) => {
-      if ([ 'uri', 'method', 'params' ].indexOf(key) === -1) {
-        payload[key] = toString(data.options[key]);
+    datas.push(`curPage: 1`);
+    datas.push(`isLoading: false`);
+    datas.push(`loading: false`);
+    datas.push(`finished: false`);
+    imports.push(`import { rmPullRefresh, rmList } from 'remain-ui'`);
+    components.push(...['rmPullRefresh', 'rmList']);
+    methods.push(`onRefresh() {
+      this.curPage = 1
+      this.loading = true
+      this.loadData()
+    }`);
+    let result = `const params = {
+      curPage: this.curPage,
+      pageSize: 20
+    }
+    const { status, data } = await this.$axios({
+      url: '${data.options.uri}',
+      method: '${data.options.method}',
+      params
+    })
+    this.isLoading = false
+    this.loading = false
+    if (status === 100) {
+      this.finished = !data.pageResult.hasMore
+      if (this.curPage === 1) {
+        this.loopData = data.resultList
+      } else {
+        this.loopData.push(...data.resultList)
       }
-    });
-
-    // params parse should in string template
-    if (params) {
-      payload = `${toString(payload).slice(0, -1)} ,body: ${isExpression(params)
-        ? parseProps(params)
-        : toString(params)}}`;
+      this.curPage = this.curPage + 1
     } else {
-      payload = toString(payload);
-    }
+      this.finished = true
+    }`;
 
-    let result = `{
-      ${action}(${parseProps(uri)}, ${toString(payload)})
-        .then((response) => response.json())
-    `;
+    // if (data.dataHandler) {
+    //   const { params, content } = parseFunction(data.dataHandler);
+    //   result += `.then((${params}) => {${content}})
+    //     .catch((e) => {
+    //       console.log('error', e);
+    //     })
+    //   `;
+    // }
 
-    if (data.dataHandler) {
-      const { params, content } = parseFunction(data.dataHandler);
-      result += `.then((${params}) => {${content}})
-        .catch((e) => {
-          console.log('error', e);
-        })
-      `;
-    }
+    // result += '}';
 
-    result += '}';
-
-    return `${name}() ${result}`;
+    return `async ${name}() {${result}}`;
   };
 
   // parse condition: whether render the layer
@@ -302,7 +292,7 @@ module.exports = function(schema, option) {
     let props = '';
 
     Object.keys(schema.props).forEach((key) => {
-      if ([ 'className', 'style', 'text', 'src', 'lines' ].indexOf(key) === -1) {
+      if (['className', 'style', 'text', 'src', 'lines', 'remain-refresh-list'].indexOf(key) === -1) {
         props += ` ${parsePropsKey(key, schema.props[key])}=${parseProps(schema.props[key])}`;
       }
     });
@@ -329,12 +319,30 @@ module.exports = function(schema, option) {
         } else {
           xml = `<div${classString}${props} />`;
         }
+        if (schema.props['remain-refresh-list'] === '1') {
+          xml = `<rm-pull-refresh
+            v-model="isLoading"
+            @refresh="onRefresh"
+          >
+            <rm-list
+              v-if="loopData.length > 0"
+              v-model="loading"
+              :finished="finished"
+              finished-text="没有更多了"
+              @load="loadData"
+            >${xml}</rm-list>
+            <div v-else class="empty">
+              <span>暂无数据</span>
+            </div>
+          </rm-pull-refresh>`
+        }
         break;
       default:
+        const kebabCase = schema.componentName.match(/[A-Z]{2,}(?=[A-Z][a-z]+[0-9]*|\b)|[A-Z]?[a-z]+[0-9]*|[A-Z]|[0-9]+/g).map(x => x.toLowerCase()).join('-');
         if (schema.children && schema.children.length) {
-          xml = `<div${classString}${props}>${transform(schema.children)}</div>`;
+          xml = `<${kebabCase}${classString}${props}>${transform(schema.children)}</${kebabCase}>`;
         } else {
-          xml = `<div${classString}${props} />`;
+          xml = `<${kebabCase}${classString}${props} />`;
         }
     }
 
@@ -357,15 +365,14 @@ module.exports = function(schema, option) {
   const transform = (schema) => {
     let result = '';
 
-    if (Array.isArray(schema)) {
-      schema.forEach((layer) => {
+    if (Array.isArray(schema) && schema.length > 0) {
+      schema.forEach(layer => {
         result += transform(layer);
       });
     } else {
       const type = schema.componentName.toLowerCase();
 
-      if ([ 'page', 'block', 'component' ].indexOf(type) !== -1) {
-        // 容器组件处理: state/method/dataSource/lifeCycle/render
+      if (['page'].indexOf(type) !== -1) {
         const init = [];
 
         if (schema.state) {
@@ -396,22 +403,8 @@ module.exports = function(schema, option) {
           }
         }
 
-        if (schema.lifeCycles) {
-          if (!schema.lifeCycles['_constructor']) {
-            lifeCycles.push(`${lifeCycleMap['_constructor']}() { ${init.join('\n')}}`);
-          }
+        // if (schema.lifeCycles) {}
 
-          Object.keys(schema.lifeCycles).forEach((name) => {
-            const vueLifeCircleName = lifeCycleMap[name] || name;
-            const { params, content } = parseFunction(schema.lifeCycles[name]);
-
-            if (name === '_constructor') {
-              lifeCycles.push(`${vueLifeCircleName}() {${content} ${init.join('\n')}}`);
-            } else {
-              lifeCycles.push(`${vueLifeCircleName}() {${content}}`);
-            }
-          });
-        }
         template.push(generateRender(schema));
       } else {
         result += generateRender(schema);
@@ -426,13 +419,12 @@ module.exports = function(schema, option) {
     });
   }
 
-  transform(schema);
-  datas.push(`constants: ${toString(constants)}`);
+  transform(rootSchema);
 
   const prettierOpt = {
     parser: 'vue',
-    printWidth: 80,
-    singleQuote: true
+    singleQuote: true,
+    semi: false
   };
 
   return {
@@ -450,15 +442,17 @@ module.exports = function(schema, option) {
             ${imports.join('\n')}
 
             export default {
-              data() {
+              components: {
+                ${components.join(',\n')}
+              },
+              data () {
                 return {
                   ${datas.join(',\n')}
                 } 
-              },
+              },${lifeCycles.join(',\n')}${lifeCycles.length > 0 ? ',' : ''}
               methods: {
                 ${methods.join(',\n')}
-              },
-              ${lifeCycles.join(',\n')}
+              }
             }
           </script>
 
