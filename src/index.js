@@ -19,6 +19,8 @@ module.exports = function(rootSchema, option) {
 
   const styles4rem = [];
 
+  const styleImports = [];
+
   const boxStyleList = [
     'fontSize',
     'marginTop',
@@ -177,10 +179,6 @@ module.exports = function(rootSchema, option) {
 
     switch (action) {
       case 'fetch':
-        // if (imports.indexOf(`import {fetch} from whatwg-fetch`) === -1) {
-        //   imports.push(`import {fetch} from 'whatwg-fetch'`);
-        // }
-
         break;
     }
 
@@ -188,7 +186,10 @@ module.exports = function(rootSchema, option) {
     datas.push(`isLoading: false`);
     datas.push(`loading: false`);
     datas.push(`finished: false`);
-    imports.push(`import { rmPullRefresh, rmList } from 'remain-ui'`);
+    imports.push({
+      name: 'remain-ui',
+      value: ['rmPullRefresh', 'rmList']
+    });
     components.push(...['rmPullRefresh', 'rmList']);
     methods.push(`onRefresh() {
       this.curPage = 1
@@ -292,7 +293,7 @@ module.exports = function(rootSchema, option) {
     let props = '';
 
     Object.keys(schema.props).forEach((key) => {
-      if (['className', 'style', 'text', 'src', 'lines', 'remain-refresh-list'].indexOf(key) === -1) {
+      if (['className', 'style', 'text', 'src', 'lines', 'remain-refresh-list', 'remain-filter-popup'].indexOf(key) === -1) {
         props += ` ${parsePropsKey(key, schema.props[key])}=${parseProps(schema.props[key])}`;
       }
     });
@@ -335,6 +336,115 @@ module.exports = function(rootSchema, option) {
               <span>暂无数据</span>
             </div>
           </rm-pull-refresh>`
+        } else if (schema.props['remain-filter-popup'] === '1') {
+          const classNameCamelCase = className.replace(/\-(\w)/g, function (all, letter) {
+            return letter.toUpperCase();
+          });
+          datas.push(`${classNameCamelCase}Visible: false`);
+          datas.push(`types: [{
+            name: '全部',
+            id: undefined
+          }, {
+            name: '分类1',
+            id: '1'
+          }, {
+            name: '分类2',
+            id: '2'
+          }]`);
+          datas.push(`type: {}`);
+          methods.push(`typeClick(type) {
+            this.type = type
+          }`);
+          methods.push(`submitClick() {
+            this.${classNameCamelCase}Visible = false
+          }`);
+          imports.push({
+            name: 'remain-ui',
+            value: ['rmPopup', 'rmGrid', 'rmGridItem', 'rmButton']
+          });
+          components.push(...['rmPopup', 'rmGrid', 'rmGridItem', 'rmButton']);
+
+          const styleIndex = styles.findIndex(item => {
+            return item.indexOf(className) !== -1
+          })
+          if (styleIndex !== -1) {
+            styleImports.push(`@import '~common/css/common.scss';`)
+            styles[styleIndex] = `
+            .${className} {
+          
+              ::v-deep {
+                .van-popup {
+                  background-color: #F2F2F2;
+                  padding: 15px;
+                  box-sizing: border-box;
+            
+                  .${className}-cell {
+                    margin-bottom: 55px;
+                    max-height: 360px;
+                    overflow-y: auto;
+            
+                    .${className}-cell-title {
+                      font-size: 14px;
+                      color: #334455;
+                      margin-bottom: 15px;
+                      margin-top: 6px;
+                    }
+            
+                    .van-grid-item {
+                      height: 35px;
+                      margin-bottom: 9px;
+            
+                      .van-grid-item__content {
+                        padding: 0px;
+            
+                        .grid-item-content {
+                          font-size: 12px;
+                          background: white;
+                          color: #334455;
+                          height: 35px;
+                          border:1px solid #D8D8E1;
+                          display: flex;
+                          align-items: center;
+                          justify-content: center;
+                        }
+            
+                        .grid-item-content-checked {
+                          font-size: 12px;
+                          background: $theme-color;
+                          height: 35px;
+                          color: white;
+                          border:1px solid $theme-color;
+                          display: flex;
+                          align-items: center;
+                          justify-content: center;
+                        }
+                      }
+                    }
+                  }
+                  .${className}-button {
+                    .van-button {
+                      height: 40px;
+                    }
+                  }
+                }
+              }`;
+          }
+
+          xml = `<rm-popup class="${className}" v-model="${classNameCamelCase}Visible" position="bottom">
+            <div class="${className}-cell" v-if="types.length > 0">
+              <div class="${className}-cell-title">分类</div> 
+              <rm-grid :column-num="3" :center="false">
+                <rm-grid-item use-slot v-for="(typeItem, index) in types" :key="index">
+                  <div :class="typeItem.id === type.id ? 'grid-item-content-checked' : 'grid-item-content'" @click="typeClick(typeItem)">
+                    {{ typeItem.name }}
+                  </div>
+                </rm-grid-item>
+              </rm-grid>
+            </div>
+            <div class="${className}-button">
+              <rm-button type="info" text="确定" size="large" @click="submitClick" />
+            </div>
+          </rm-popup>`
         }
         break;
       default:
@@ -427,6 +537,21 @@ module.exports = function(rootSchema, option) {
     semi: false
   };
 
+  const mergeImports = {};
+  if (imports.length > 0) {
+    imports.forEach(item => {
+      if (mergeImports[item.name] === undefined) {
+        mergeImports[item.name] = item.value;
+      } else {
+        mergeImports[item.name].push(...item.value);
+      }
+    });
+  }
+  const parseImports = [];
+  Object.keys(mergeImports).forEach(key => {
+    parseImports.push(`import { ${mergeImports[key]} } from '${key}'`)
+  });
+
   return {
     noTemplate: true,
     panelDisplay: [
@@ -439,7 +564,7 @@ module.exports = function(rootSchema, option) {
           </template>
 
           <script>
-            ${imports.join('\n')}
+            ${parseImports.join('\n')}
 
             export default {
               components: {
@@ -457,6 +582,8 @@ module.exports = function(rootSchema, option) {
           </script>
 
           <style lang="scss" scoped>
+            ${styleImports.join('\n')}
+
             ${prettier.format(styles.join('\n'), { parser: 'scss' })}
           </style>
         `,
